@@ -1,0 +1,4 @@
+requests
+transmission-fluid
+feedparser
+bencoder
