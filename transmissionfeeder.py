@@ -4,7 +4,7 @@ import hashlib
 import base64
 import unicodedata
 import logging
-logger = logging.getLogger('transmission-rss')
+logger = logging.getLogger('transmission-feeder')
 import traceback
 
 import feedparser
@@ -28,13 +28,18 @@ def _escape_filename(name):
     return name
 
 
-Feed = namedtuple('Feed', field_names=['name', 'url', 'filter', 'download_dir'])
-'''
-name: str, name of the feed, used for logging
-url: rss url
-filter: a callable, accepting a string and returning boolean, called with title of the feed entry
-download_dir: where to save downloaded files
-'''
+class Feed:
+    def __init__(self, name, url, filter=lambda title: True, download_dir=None):
+        '''
+        name: str, name of the feed, used for logging
+        url: rss url
+        filter: a callable, accepting a string and returning boolean, called with title of the feed entry
+        download_dir: absolute path of download directory, use None if you want to use default
+        '''
+        self.name = name
+        self.url = url
+        self.filter = filter
+        self.download_dir = download_dir
 
 
 class Feeder:
@@ -81,8 +86,11 @@ class Feeder:
     def _add_torrent(self, feed, torrent, infohash):
         metainfo = base64.encodebytes(torrent)
         try:
-            response = self.client('torrent-add', download_dir=feed.download_dir, metainfo=metainfo.decode('latin-1'))
-        except transmission.BadRequest as e:
+            request_args = {'metainfo': metainfo.decode('latin-1')}
+            if feed.download_dir is not None:
+                request_args['download_dir'] = feed.download_dir
+            response = self.client('torrent-add', **request_args)
+        except transmission.BadRequest:
             logger.error(traceback.format_exc())
         else:
             self.added_infohashes.add(infohash)

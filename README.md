@@ -1,3 +1,3 @@
-transmission-feeder - simple rss feed library for transmission
+transmission-feeder - simple RSS feed library for Transmission
 ========
 
