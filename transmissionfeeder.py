@@ -1,5 +1,4 @@
 import re
-from collections import namedtuple
 import hashlib
 import base64
 import unicodedata
@@ -29,17 +28,20 @@ def _escape_filename(name):
 
 
 class Feed:
-    def __init__(self, name, url, filter=lambda title: True, download_dir=None):
+    def __init__(self, name, url, filter=lambda title: True, download_dir=None, stop_after=lambda title: False):
         '''
         name: str, name of the feed, used for logging
         url: rss url
         filter: a callable, accepting a string and returning boolean, called with title of the feed entry
         download_dir: absolute path of download directory, use None if you want to use default
+        stop_when: a callable, stop checking updates after it
+                    Note: usually, newer items shows first
         '''
         self.name = name
         self.url = url
         self.filter = filter
         self.download_dir = download_dir
+        self.stop_after = stop_after
 
 
 class Feeder:
@@ -53,6 +55,10 @@ class Feeder:
 
     def add_feed(self, feed: Feed):
         self.feeds.append(feed)
+
+    def new_feed(self, *args, **kwargs):
+        feed = Feed(*args, **kwargs)
+        self.add_feed(feed)
 
     def update(self):
         for feed in self.feeds:
@@ -71,8 +77,9 @@ class Feeder:
         for entry in fp['entries']:
             if not feed.filter(entry['title']):
                 continue
+
             for link in entry['links']:
-                if link['type'] != 'application/x-bittorrent':
+                if link['type'] != 'application/x-bittorrent' and not link['href'].endswith('.torrent'):
                     continue
                 torrent_url = link['href']
                 torrent = self.session.get(torrent_url).content
@@ -82,6 +89,10 @@ class Feeder:
                     continue
                 logger.info('adding torrent from feed "{}", title="{}"'.format(feed.name, entry['title']))
                 self._add_torrent(feed, torrent, infohash)
+
+            if feed.stop_after(entry['title']):
+                logger.debug('stop checking feed "{}" because stop_after matches "{}"'.format(feed.name, entry['title']))
+                break
 
     def _add_torrent(self, feed, torrent, infohash):
         metainfo = base64.encodebytes(torrent)
@@ -110,20 +121,17 @@ def make_filter(includes=[], excludes=[], regex='.*'):
     return filter
 
 
-def main():
+def setup_logger(level):
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(level)
     formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
-    feeder = Feeder(client=Transmission(host='localhost', port=9091, username='transmission', password='transmission'))
-    feeder.add_feed(Feed(name='Test Feed',
-                         url='https://bangumi.moe/rss/tags/5c2b732196ff38314480b616',
-                         filter=make_filter(includes=['1080P', 'GB']),
-                         download_dir=''))
-    feeder.update()
+
+def main():
+    pass
 
 
 if __name__ == '__main__':

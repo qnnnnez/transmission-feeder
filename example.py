@@ -1,19 +1,33 @@
 from transmissionfeeder import *
 
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+setup_logger(logging.DEBUG)
 
-feeder = Feeder(client=Transmission(host='localhost', port=9091, username='transmission', password='transmission'))
-feeder.add_feed(Feed(name='Test Feed',
-                     url='https://bangumi.moe/rss/tags/5c2b732196ff38314480b616',
-                     filter=make_filter(includes=['1080P', 'GB'])))
+feeder = Feeder(
+    client=Transmission(
+        host='localhost',
+        port=9091,
+        username='transmission',
+        password='transmission',
+    ),
+)
 
-import time
-while True:
-    feeder.update()
-    logger.debug('sleep for 3600s before next update')
-    time.sleep(3600)
+'''
+# feeder.session configuration
+# feeder.session is a requests.Session object, see http://docs.python-requests.org/en/master/user/advanced/#session-objects
+# By modifying the object, you can control how feeder sends HTTP requests:
+feeder.session.auth('user', 'pass')    # http basic auth
+feeder.session.cookies.set('cookie-name', 'cookie-value')    # add a cookie
+feeder.session.proxies = {'http': 'foo.bar:3128', 'http://host.name': 'foo.bar:4012'}    # proxy settings
+'''
+
+feeder.new_feed(
+    name='Endro',
+    url='https://bangumi.moe/rss/tags/5c2b732196ff38314480b616',
+    filter=make_filter(includes=['1080P', 'GB']),
+    download_dir=None,
+    stop_after=make_filter(includes=['[01]']),
+)
+
+logger.info('feeder.update()')
+feeder.update()
+logger.info('update done')
