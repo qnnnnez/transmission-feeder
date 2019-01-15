@@ -19,6 +19,20 @@ def _calculate_infohash(torrent_data):
     return hashlib.sha1(bencoder.encode(torrent[b'info'])).hexdigest()
 
 
+def _extract_infos(torrent_data):
+    torrent = bencoder.decode(torrent_data)
+    info = torrent[b'info']
+    name = info[b'name'].decode()
+    length = info.get(b'length')
+    if length is not None:    # single file
+        return [FileInfo(name, length, [])]
+    infos = []
+    for file in info[b'files']:
+        path = [p.decode() for p in file[b'path']]
+        infos.append(FileInfo(path[-1], file[b'length'], path[:-1]))
+    return infos
+
+
 def _escape_filename(name):
     name = unicodedata.normalize('NFKD,', name)
     name = re.sub('[^\w\s-]', '', name).strip().lower()
@@ -28,7 +42,8 @@ def _escape_filename(name):
 
 
 class Feed:
-    def __init__(self, name, url, filter=lambda title: True, download_dir=None, stop_after=lambda title: False):
+    def __init__(self, name, url, filter=lambda title: True, download_dir=None, stop_after=lambda title: False,
+                 file_filter=lambda fileinfo: True):
         '''
         name: str, name of the feed, used for logging
         url: rss url
@@ -42,6 +57,14 @@ class Feed:
         self.filter = filter
         self.download_dir = download_dir
         self.stop_after = stop_after
+        self.file_filter = file_filter
+
+
+class FileInfo:
+    def __init__(self, name, length, path):
+        self.name = name
+        self.length = length
+        self.path = path
 
 
 class Feeder:
@@ -95,11 +118,24 @@ class Feeder:
                 break
 
     def _add_torrent(self, feed, torrent, infohash):
+        file_infos = _extract_infos(torrent)
+        unwanted_files = []
+        for i, info in enumerate(file_infos):
+            if not feed.file_filter(info):
+                unwanted_files.append(i)
+        if len(file_infos) == len(unwanted_files):
+            logger.warning('no file passes file_filter, not adding torrent: feed="{}", infohash={}'.format(feed.name, infohash))
+            return
+
         metainfo = base64.encodebytes(torrent)
         try:
             request_args = {'metainfo': metainfo.decode('latin-1')}
             if feed.download_dir is not None:
                 request_args['download_dir'] = feed.download_dir
+            if unwanted_files:
+                # for transmission, empty list means all files are unwanted
+                # https://trac.transmissionbt.com/ticket/5615
+                request_args['files_unwanted'] = unwanted_files
             response = self.client('torrent-add', **request_args)
         except transmission.BadRequest:
             logger.error(traceback.format_exc())
@@ -108,7 +144,7 @@ class Feeder:
             logger.debug('added torrent from feed "{}", infohash={}'.format(feed.name, infohash))
 
 
-def make_filter(includes=[], excludes=[], regex='.*'):
+def make_str_filter(includes=[], excludes=[], regex='.*'):
     regex = re.compile(regex)
     def filter(title):
         for include in includes:
@@ -118,6 +154,12 @@ def make_filter(includes=[], excludes=[], regex='.*'):
             if exclude in title:
                 return False
         return not not regex.findall(title)
+    return filter
+
+
+def make_file_filter(name_filter=lambda name: True, length_filter=lambda size: True):
+    def filter(info):
+        return name_filter(info.name) and length_filter(info.length)
     return filter
 
 

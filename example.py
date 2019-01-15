@@ -23,9 +23,10 @@ feeder.session.proxies = {'http': 'foo.bar:3128', 'http://host.name': 'foo.bar:4
 feeder.new_feed(
     name='Endro',
     url='https://bangumi.moe/rss/tags/5c2b732196ff38314480b616',
-    filter=make_filter(includes=['1080P', 'GB']),
+    filter=make_str_filter(includes=['1080P', 'GB']),
     download_dir=None,
-    stop_after=make_filter(includes=['[01]']),
+    stop_after=make_str_filter(includes=['[01]']),
+    file_filter=make_file_filter(length_filter=lambda size: size<=500*1024*1024)
 )
 
 logger.info('feeder.update()')
